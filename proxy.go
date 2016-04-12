@@ -31,7 +31,6 @@ func New() *Handler {
 	p.reverseProxy = &httputil.ReverseProxy{
 		Transport: &http.Transport{
 			Dial: func(network, address string) (net.Conn, error) {
-				// TOFIX: circular reference
 				return p.dial(address)
 			},
 		},
