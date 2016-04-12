@@ -58,7 +58,7 @@ func (p *Handler) dial(address string) (net.Conn, error) {
 // ServeHTTP implements http.Handler
 func (p *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Upgrade a non context request
-	p.ServeHTTPC(context.TODO(), w, r)
+	p.ServeHTTPC(context.Background(), w, r)
 }
 
 // ServeHTTPC implements xhandler.HandlerC
