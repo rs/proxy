@@ -1,7 +1,11 @@
 package main
 
 import (
+	"net"
 	"net/http"
+	"strings"
+
+	"golang.org/x/net/context"
 
 	"github.com/rs/proxy"
 	"github.com/rs/xaccess"
@@ -11,6 +15,17 @@ import (
 
 func main() {
 	p := proxy.New()
+
+	p.Accept = func(ctx context.Context, r *http.Request) bool {
+		xlog.Debugf("Accepting %s", r.URL.Host)
+		return strings.HasPrefix(r.URL.Host, "www.apple.com")
+	}
+
+	dialer := net.Dialer{}
+	p.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+		xlog.Debugf("Dialing %s, %s", network, address)
+		return dialer.Dial(network, address)
+	}
 
 	c := xhandler.Chain{}
 	c.UseC(xlog.NewHandler(xlog.Config{}))
