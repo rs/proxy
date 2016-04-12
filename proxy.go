@@ -127,9 +127,8 @@ func (p *Handler) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http
 	err2 := make(chan error, 1)
 	buf1 := p.getBuffer()
 	buf2 := p.getBuffer()
-	timeout := 5 * time.Second
-	go proxy(ctx, targetConn, clientConn, buf1, timeout, err1)
-	go proxy(ctx, clientConn, targetConn, buf2, timeout, err2)
+	go netCopy(ctx, targetConn, clientConn, buf1, err1)
+	go netCopy(ctx, clientConn, targetConn, buf2, err2)
 	select {
 	case <-err1:
 		// stop the other go routine and wait for its termination
@@ -143,55 +142,4 @@ func (p *Handler) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http
 	// Put buffers back to their pool
 	p.bufferPool.Put(buf1)
 	p.bufferPool.Put(buf2)
-}
-
-func proxy(ctx context.Context, from net.Conn, to net.Conn, buf []byte, timeout time.Duration, errs chan error) {
-	for {
-		select {
-		case <-ctx.Done():
-			// If context is canceled, exit
-			errs <- nil
-			return
-		default:
-			// Extend reader's deadline
-			from.SetReadDeadline(time.Now().Add(timeout))
-			// Read data from the source connection.
-			read, err := from.Read(buf)
-			// If read error occurs, check if it's a fatal error (not a timeout)
-			// and stop the proxiying
-			if err != nil {
-				if isNetTimeout(err) {
-					// On deadline exceeded, keep going so we check out
-					// on the stop channel.
-					continue
-				}
-				// On error, stop there and notify the caller
-				errs <- err
-				return
-			}
-
-			// Extend reader's deadline
-			to.SetWriteDeadline(time.Now().Add(timeout))
-			// Write data to the destination.
-			_, err = to.Write(buf[:read])
-			// If write error occurs, check if it's a fatal error (not a timeout)
-			// and stop the proxiying
-			if err != nil {
-				if isNetTimeout(err) {
-					// On deadline exceeded, keep going so we check out
-					// on the stop channel.
-					continue
-				}
-				errs <- err
-				return
-			}
-		}
-	}
-}
-
-func isNetTimeout(err error) bool {
-	if err, ok := err.(net.Error); ok {
-		return err.Timeout()
-	}
-	return false
 }
