@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"io"
 	"net/http"
 
 	"github.com/rs/xlog"
@@ -33,24 +34,24 @@ func (p *Handler) handleHTTPS(ctx context.Context, w http.ResponseWriter, r *htt
 
 	clientConn.Write(connectionEstablishedHeader)
 
-	ctx, cancel := context.WithCancel(ctx)
-	err1 := make(chan error, 1)
-	err2 := make(chan error, 1)
 	buf1 := p.getBuffer()
 	buf2 := p.getBuffer()
-	go netCopy(ctx, targetConn, clientConn, buf1, err1)
-	go netCopy(ctx, clientConn, targetConn, buf2, err2)
+	done := make(chan bool, 2)
+	go copy(targetConn, clientConn, buf1, done)
+	go copy(clientConn, targetConn, buf2, done)
+	// As soon a one way returns an error or the context is cancelled
+	// exit the current context do activate the defers and thus close
+	// the connections
 	select {
-	case <-err1:
-		// stop the other go routine and wait for its termination
-		cancel()
-		<-err2
-	case <-err2:
-		// stop the other go routine and wait for its termination
-		cancel()
-		<-err1
+	case <-ctx.Done():
+	case <-done:
 	}
 	// Put buffers back to their pool
 	p.bufferPool.Put(buf1)
 	p.bufferPool.Put(buf2)
+}
+
+func copy(dst io.Writer, src io.Reader, buf []byte, done chan bool) {
+	io.CopyBuffer(dst, src, buf)
+	done <- true
 }
