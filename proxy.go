@@ -18,10 +18,10 @@ type Handler struct {
 	// Accept takes a request and return if the connection is accepted
 	// or not. The target address is the r.URL.Host. The Accept implementation
 	// may modify this field to rewrite the target.
-	Accept func(r *http.Request) bool
+	Accept func(ctx context.Context, r *http.Request) bool
 	// Dial specifies the dial function for creating unencrypted TCP connections.
 	// If Dial is nil, net.Dial is used.
-	Dial func(network, addr string) (net.Conn, error)
+	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
 	// Size of the buffer for copping bytes from/to client from/to target.
 	BufferSize int
 	bufferPool *sync.Pool
@@ -47,9 +47,9 @@ func (p *Handler) getBuffer() []byte {
 	return buf
 }
 
-func (p *Handler) dial(address string) (net.Conn, error) {
+func (p *Handler) dial(ctx context.Context, address string) (net.Conn, error) {
 	if p.Dial != nil {
-		return p.Dial(tcp, address)
+		return p.Dial(ctx, tcp, address)
 	}
 	return net.Dial(tcp, address)
 }
@@ -93,7 +93,7 @@ func (p *Handler) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http
 		return
 	}
 
-	if p.Accept != nil && !p.Accept(r) {
+	if p.Accept != nil && !p.Accept(ctx, r) {
 		http.Error(w, "CONNECT Not Allowed", http.StatusForbidden)
 		statusCode = http.StatusForbidden
 		return
@@ -104,7 +104,7 @@ func (p *Handler) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http
 		targetAddr += ":80"
 	}
 
-	targetConn, err := p.dial(targetAddr)
+	targetConn, err := p.dial(ctx, targetAddr)
 	if err != nil {
 		http.Error(w, "CONNECT Not Allowed", http.StatusBadGateway)
 		statusCode = http.StatusBadGateway
