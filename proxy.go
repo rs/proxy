@@ -81,13 +81,13 @@ func (p *Handler) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http
 		return
 	}
 
+	if strings.IndexByte(r.URL.Host, ':') == -1 {
+		r.URL.Host += ":80"
+	}
+
 	if p.Accept != nil && !p.Accept(ctx, r) {
 		http.Error(w, "CONNECT Not Allowed", http.StatusForbidden)
 		return
-	}
-
-	if strings.IndexByte(r.URL.Host, ':') == -1 {
-		r.URL.Host += ":80"
 	}
 
 	if r.Method == "CONNECT" {
