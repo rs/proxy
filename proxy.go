@@ -3,11 +3,9 @@ package proxy
 import (
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"strings"
 	"sync"
-	"time"
-
-	"github.com/rs/xlog"
 
 	"golang.org/x/net/context"
 )
@@ -23,20 +21,31 @@ type Handler struct {
 	// If Dial is nil, net.Dial is used.
 	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
 	// Size of the buffer for copping bytes from/to client from/to target.
-	BufferSize int
-	bufferPool *sync.Pool
+	BufferSize   int
+	bufferPool   *sync.Pool
+	reverseProxy *httputil.ReverseProxy
 }
 
 const tcp = "tcp"
 
-var connectionEstablishedHeader = []byte("HTTP/1.0 200 Connection Established\r\n\r\n")
-
 // New returns a new Proxy handler
 func New() *Handler {
-	return &Handler{
+	p := &Handler{
 		BufferSize: 256,
 		bufferPool: &sync.Pool{},
 	}
+	p.reverseProxy = &httputil.ReverseProxy{
+		Transport: &http.Transport{
+			Dial: func(network, address string) (net.Conn, error) {
+				// TOFIX: circular reference
+				return p.dial(context.TODO(), address)
+			},
+		},
+		Director: func(*http.Request) {
+			// Do nothing, the request is self-sufficient
+		},
+	}
+	return p
 }
 
 func (p *Handler) getBuffer() []byte {
@@ -62,84 +71,28 @@ func (p *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // ServeHTTPC implements xhandler.HandlerC
 func (p *Handler) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	hj, ok := w.(http.Hijacker)
-	if !ok {
-		panic("ResponseWriter doesn't support hijacking")
-	}
-
-	log := xlog.FromContext(ctx)
-	statusCode := http.StatusOK
-	defer func(t time.Time) {
-		status := "ok"
-		if statusCode >= 400 {
-			status = "error"
-		}
-		log.Debugf("%s %s", r.Method, r.URL.String(), xlog.F{
-			"status":      status,
-			"status_code": statusCode,
-			"duration":    time.Since(t).Seconds(),
-		})
-	}(time.Now())
-
-	if r.Method != "CONNECT" {
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-		statusCode = http.StatusMethodNotAllowed
+	if r.URL.Host == "" {
+		http.Error(w, "Non Absolute URL", http.StatusBadRequest)
 		return
 	}
 
-	if r.URL.Host == "" {
-		http.Error(w, "Non Absolute URL", http.StatusBadRequest)
-		statusCode = http.StatusBadRequest
+	if r.Method != "CONNECT" && r.URL.Scheme != "http" && r.URL.Scheme != "https" {
+		http.Error(w, "Unsupported URL Scheme", http.StatusBadRequest)
 		return
 	}
 
 	if p.Accept != nil && !p.Accept(ctx, r) {
 		http.Error(w, "CONNECT Not Allowed", http.StatusForbidden)
-		statusCode = http.StatusForbidden
 		return
 	}
 
-	targetAddr := r.URL.Host
-	if strings.IndexByte(targetAddr, ':') == -1 {
-		targetAddr += ":80"
+	if strings.IndexByte(r.URL.Host, ':') == -1 {
+		r.URL.Host += ":80"
 	}
 
-	targetConn, err := p.dial(ctx, targetAddr)
-	if err != nil {
-		http.Error(w, "CONNECT Not Allowed", http.StatusBadGateway)
-		statusCode = http.StatusBadGateway
-		return
+	if r.Method == "CONNECT" {
+		p.handleHTTPS(ctx, w, r)
+	} else {
+		p.reverseProxy.ServeHTTP(w, r)
 	}
-	defer targetConn.Close()
-
-	clientConn, _, err := hj.Hijack()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		statusCode = http.StatusInternalServerError
-		return
-	}
-	defer clientConn.Close()
-
-	clientConn.Write(connectionEstablishedHeader)
-
-	ctx, cancel := context.WithCancel(ctx)
-	err1 := make(chan error, 1)
-	err2 := make(chan error, 1)
-	buf1 := p.getBuffer()
-	buf2 := p.getBuffer()
-	go netCopy(ctx, targetConn, clientConn, buf1, err1)
-	go netCopy(ctx, clientConn, targetConn, buf2, err2)
-	select {
-	case <-err1:
-		// stop the other go routine and wait for its termination
-		cancel()
-		<-err2
-	case <-err2:
-		// stop the other go routine and wait for its termination
-		cancel()
-		<-err1
-	}
-	// Put buffers back to their pool
-	p.bufferPool.Put(buf1)
-	p.bufferPool.Put(buf2)
 }

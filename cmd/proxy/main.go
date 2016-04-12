@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/rs/proxy"
+	"github.com/rs/xaccess"
 	"github.com/rs/xhandler"
 	"github.com/rs/xlog"
 )
@@ -17,6 +18,7 @@ func main() {
 	c.UseC(xlog.URLHandler("url"))
 	c.UseC(xlog.RemoteAddrHandler("ip"))
 	c.UseC(xlog.UserAgentHandler("user_agent"))
+	c.UseC(xaccess.NewHandler())
 
 	xlog.Info("Listening on :8080")
 	if err := http.ListenAndServe(":8080", c.Handler(p)); err != nil {
