@@ -18,7 +18,7 @@ type Handler struct {
 	Accept func(ctx context.Context, r *http.Request) bool
 	// Dial specifies the dial function for creating unencrypted TCP connections.
 	// If Dial is nil, net.Dial is used.
-	Dial         func(ctx context.Context, network, address string) (net.Conn, error)
+	Dial         func(network, address string) (net.Conn, error)
 	bufferPool   httputil.BufferPool
 	reverseProxy *httputil.ReverseProxy
 }
@@ -32,7 +32,7 @@ func New() *Handler {
 		Transport: &http.Transport{
 			Dial: func(network, address string) (net.Conn, error) {
 				// TOFIX: circular reference
-				return p.dial(context.TODO(), address)
+				return p.dial(address)
 			},
 		},
 		Director: func(*http.Request) {
@@ -49,9 +49,9 @@ func (p *Handler) SetBufferPool(bpool httputil.BufferPool) {
 	p.reverseProxy.BufferPool = bpool
 }
 
-func (p *Handler) dial(ctx context.Context, address string) (net.Conn, error) {
+func (p *Handler) dial(address string) (net.Conn, error) {
 	if p.Dial != nil {
-		return p.Dial(ctx, tcp, address)
+		return p.Dial(tcp, address)
 	}
 	return net.Dial(tcp, address)
 }
