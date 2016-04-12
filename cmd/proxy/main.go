@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/net/context"
 
+	"github.com/oxtoacart/bpool"
 	"github.com/rs/proxy"
 	"github.com/rs/xaccess"
 	"github.com/rs/xhandler"
@@ -26,6 +27,8 @@ func main() {
 		xlog.Debugf("Dialing %s, %s", network, address)
 		return dialer.Dial(network, address)
 	}
+
+	p.SetBufferPool(bpool.NewBytePool(10000, 32*1024))
 
 	c := xhandler.Chain{}
 	c.UseC(xlog.NewHandler(xlog.Config{}))

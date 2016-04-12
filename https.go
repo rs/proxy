@@ -34,8 +34,13 @@ func (p *Handler) handleHTTPS(ctx context.Context, w http.ResponseWriter, r *htt
 
 	clientConn.Write(connectionEstablishedHeader)
 
-	buf1 := p.getBuffer()
-	buf2 := p.getBuffer()
+	var buf1 []byte
+	var buf2 []byte
+	// Get buffers from pool if any
+	if p.bufferPool != nil {
+		buf1 = p.bufferPool.Get()
+		buf2 = p.bufferPool.Get()
+	}
 	done := make(chan bool, 2)
 	go copy(targetConn, clientConn, buf1, done)
 	go copy(clientConn, targetConn, buf2, done)
@@ -46,9 +51,11 @@ func (p *Handler) handleHTTPS(ctx context.Context, w http.ResponseWriter, r *htt
 	case <-ctx.Done():
 	case <-done:
 	}
-	// Put buffers back to their pool
-	p.bufferPool.Put(buf1)
-	p.bufferPool.Put(buf2)
+	// Put buffers back to their pool if any
+	if p.bufferPool != nil {
+		p.bufferPool.Put(buf1)
+		p.bufferPool.Put(buf2)
+	}
 }
 
 func copy(dst io.Writer, src io.Reader, buf []byte, done chan bool) {

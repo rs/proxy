@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"strings"
-	"sync"
 
 	"golang.org/x/net/context"
 )
@@ -19,10 +18,8 @@ type Handler struct {
 	Accept func(ctx context.Context, r *http.Request) bool
 	// Dial specifies the dial function for creating unencrypted TCP connections.
 	// If Dial is nil, net.Dial is used.
-	Dial func(ctx context.Context, network, address string) (net.Conn, error)
-	// Size of the buffer for copping bytes from/to client from/to target.
-	BufferSize   int
-	bufferPool   *sync.Pool
+	Dial         func(ctx context.Context, network, address string) (net.Conn, error)
+	bufferPool   httputil.BufferPool
 	reverseProxy *httputil.ReverseProxy
 }
 
@@ -30,10 +27,7 @@ const tcp = "tcp"
 
 // New returns a new Proxy handler
 func New() *Handler {
-	p := &Handler{
-		BufferSize: 256,
-		bufferPool: &sync.Pool{},
-	}
+	p := &Handler{}
 	p.reverseProxy = &httputil.ReverseProxy{
 		Transport: &http.Transport{
 			Dial: func(network, address string) (net.Conn, error) {
@@ -48,12 +42,11 @@ func New() *Handler {
 	return p
 }
 
-func (p *Handler) getBuffer() []byte {
-	buf, ok := p.bufferPool.Get().([]byte)
-	if !ok {
-		buf = make([]byte, p.BufferSize)
-	}
-	return buf
+// SetBufferPool set the buffer pool to be used with io.CopyBuffer when copying data
+// between client/backend sockets.
+func (p *Handler) SetBufferPool(bpool httputil.BufferPool) {
+	p.bufferPool = bpool
+	p.reverseProxy.BufferPool = bpool
 }
 
 func (p *Handler) dial(ctx context.Context, address string) (net.Conn, error) {
