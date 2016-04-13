@@ -40,6 +40,10 @@ func (p *Handler) handleHTTPS(ctx context.Context, w http.ResponseWriter, r *htt
 	if p.bufferPool != nil {
 		buf1 = p.bufferPool.Get()
 		buf2 = p.bufferPool.Get()
+		defer func() {
+			p.bufferPool.Put(buf1)
+			p.bufferPool.Put(buf2)
+		}()
 	}
 	done := make(chan bool, 2)
 	go copy(targetConn, clientConn, buf1, done)
@@ -50,11 +54,6 @@ func (p *Handler) handleHTTPS(ctx context.Context, w http.ResponseWriter, r *htt
 	select {
 	case <-ctx.Done():
 	case <-done:
-	}
-	// Put buffers back to their pool if any
-	if p.bufferPool != nil {
-		p.bufferPool.Put(buf1)
-		p.bufferPool.Put(buf2)
 	}
 }
 
