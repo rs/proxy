@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"io"
+	"net"
 	"net/http"
 
 	"github.com/rs/xlog"
@@ -32,6 +33,9 @@ func (p *Handler) handleHTTPS(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 	defer clientConn.Close()
 
+	p.setupSocket(targetConn)
+	p.setupSocket(clientConn)
+
 	clientConn.Write(connectionEstablishedHeader)
 
 	var buf1 []byte
@@ -54,6 +58,16 @@ func (p *Handler) handleHTTPS(ctx context.Context, w http.ResponseWriter, r *htt
 	select {
 	case <-ctx.Done():
 	case <-done:
+	}
+}
+
+func (p *Handler) setupSocket(conn net.Conn) {
+	if p.SocketBufferSize == 0 {
+		return
+	}
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		tcpConn.SetReadBuffer(p.SocketBufferSize)
+		tcpConn.SetWriteBuffer(p.SocketBufferSize)
 	}
 }
 

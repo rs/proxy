@@ -18,7 +18,10 @@ type Handler struct {
 	Accept func(ctx context.Context, r *http.Request) bool
 	// Dial specifies the dial function for creating unencrypted TCP connections.
 	// If Dial is nil, net.Dial is used.
-	Dial         func(network, address string) (net.Conn, error)
+	Dial func(network, address string) (net.Conn, error)
+	// Sockets buffer size (0 keeps system default)
+	SocketBufferSize int
+
 	bufferPool   httputil.BufferPool
 	reverseProxy *httputil.ReverseProxy
 }
