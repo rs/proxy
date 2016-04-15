@@ -18,7 +18,7 @@ func (p *Handler) handleHTTPS(ctx context.Context, w http.ResponseWriter, r *htt
 		panic("ResponseWriter doesn't support hijacking")
 	}
 
-	targetConn, err := p.dial(r.URL.Host)
+	targetConn, err := p.dial(ctx, r.URL.Host)
 	if err != nil {
 		http.Error(w, "CONNECT Not Allowed", http.StatusBadGateway)
 		return

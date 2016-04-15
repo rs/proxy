@@ -23,7 +23,7 @@ func main() {
 	}
 
 	dialer := net.Dialer{}
-	p.Dial = func(network, address string) (net.Conn, error) {
+	p.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
 		xlog.Debugf("Dialing %s, %s", network, address)
 		return dialer.Dial(network, address)
 	}
